@@ -6008,11 +6008,9 @@ static int vmx_handle_exit(struct kvm_vcpu *vcpu,
 	
 	// add cur_cycles to total_cycles for all exits
 	arch_atomic64_add((u64)arch_atomic64_read(&cur_cycles),&total_cycles);
-	printk("cycles in vmx is %lld\n",(long long)(arch_atomic64_read(&total_cycles)));
 	
 	// add cur_cycles to cycles taken for current exit in all_exits list
 	arch_atomic64_add((u64)arch_atomic64_read(&cur_cycles),&(all_exits[exit_reason].cycles));
-printk("cycles in vmx for exit_reason %d is %lld\n",exit_reason,(long long)(arch_atomic64_read(&(all_exits[exit_reason].cycles))));
 	
 	// return handle exit function output 	
 	return return_value;
