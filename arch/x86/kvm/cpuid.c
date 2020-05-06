@@ -14,21 +14,23 @@
 #include <linux/vmalloc.h>
 #include <linux/uaccess.h>
 #include <linux/sched/stat.h>
-
+#include <linux/kernel.h>
 #include <asm/processor.h>
 #include <asm/user.h>
 #include <asm/fpu/xstate.h>
+#include <asm/atomic.h>
 #include "cpuid.h"
 #include "lapic.h"
 #include "mmu.h"
 #include "trace.h"
 #include "pmu.h"
 
+
 static u32 xstate_required_size(u64 xstate_bv, bool compacted)
 {
 	int feature_bit = 0;
 	u32 ret = XSAVE_HDR_SIZE + XSAVE_HDR_OFFSET;
-
+	
 	xstate_bv &= XFEATURE_MASK_EXTEND;
 	while (xstate_bv) {
 		if (xstate_bv & 0x1) {
@@ -1054,16 +1056,116 @@ bool kvm_cpuid(struct kvm_vcpu *vcpu, u32 *eax, u32 *ebx,
 }
 EXPORT_SYMBOL_GPL(kvm_cpuid);
 
+// total_exits:  count of all exits with all valid exit reasons
+atomic_t total_exits;
+EXPORT_SYMBOL(total_exits);
+
+/* total_cycles:  count of processor cycles taken to process 
+*			all exits with all valid exit reasons 
+*/
+atomic64_t total_cycles;
+EXPORT_SYMBOL(total_cycles); 
+
+/* all_exits: list of all structures that contain count of occurrences 
+*		of each exit reason and processor cycles taken to process it  
+*/
+all_exit all_exits[SIZE];
+EXPORT_SYMBOL( all_exits);
+
+// function to initialize the list of exit structures 
+static void initialize_exit_list(void){
+	int i;
+	for( i = 0; i < SIZE; i++) {
+		atomic_set(&(all_exits[i]).exits,0);
+		arch_atomic64_set(&(all_exits[i]).cycles,0L);
+	}
+}
+
+// function defined in vmx/vmx.c to check if an exit is enabled.
+//extern bool isEnabled(u32);
+
 int kvm_emulate_cpuid(struct kvm_vcpu *vcpu)
 {
 	u32 eax, ebx, ecx, edx;
-
+	
 	if (cpuid_fault_enabled(vcpu) && !kvm_require_cpl(vcpu, 0))
 		return 1;
 
 	eax = kvm_rax_read(vcpu);
 	ecx = kvm_rcx_read(vcpu);
-	kvm_cpuid(vcpu, &eax, &ebx, &ecx, &edx, true);
+
+	// if total_exits so far is 0, initialize the list of structs (begin)
+	if( atomic_sub_and_test( 1, &total_exits )){
+		initialize_exit_list();
+	}
+
+	// for leaf node 0x4FFFFFFF, assign the total_exits to eax register
+	if( eax == 0x4FFFFFFF ){
+		eax = (u32)(atomic_read(&total_exits));	
+		ebx = 0;
+		ecx = 0;
+		edx = 0;
+	} 
+	// for leaf node 0x4FFFFFFD, assign the count of occurrences of given exit number to eax register
+	else if( eax == 0x4FFFFFFD ){
+		// check if the exit number input is defined in Intel SDM
+		if( ecx > 68 || ecx == 35 || ecx == 38 || ecx == 42 || ecx == 65 ){
+			printk("Exit reason %d not defined in Intel SDM\n",ecx);
+			eax = 0;
+			ebx = 0;
+			ecx = 0;
+			edx = 0x4FFFFFFF;
+		}
+		// check if the exit number input is enabled in the kvm
+		else if(ecx == 66 || ecx == 51 || ecx == 34 || ecx == 33 || ecx == 17 || ecx ==16 || ecx == 11 || ecx == 6 || ecx == 5 || ecx == 4 || ecx == 3 ) 	{
+			printk("Exit reason %d not enabled in kvm\n",ecx);
+			eax = 0;
+			ebx = 0;
+			ecx = 0;
+			edx = 0;
+		}
+		//if exit number given is valid, assign count to eax register
+		else {
+	printk("exits in cpuid for exit_reason %d is %d\n",ecx,(int)(atomic_read(&all_exits[ecx].exits)));
+			eax = (u32)(atomic_read(&all_exits[ecx].exits));
+		}
+	}
+	//  for leaf node 0x4FFFFFFE, assign the total_cycles taken to process all exits to ebx and ecx registers
+	else if( eax == 0x4FFFFFFE ){
+	printk("total_cycles in cpuid is %lld\n",(long long)(arch_atomic64_read(&total_cycles)));
+		ebx = atomic64_read(&total_cycles) >> 32;
+		ecx = atomic64_read(&total_cycles);
+			
+	}
+	// for leaf node 0x4FFFFFFC, assign the processor cycles taken to process given exit number to ebx and ecx registers
+	else if( eax == 0x4FFFFFFC ) {
+		// check if the exit number input is defined in Intel SDM
+		if( ecx > 68 || ecx == 35 || ecx == 38 || ecx == 42 || ecx == 65 ){
+			printk("Exit reason %d not defined in Intel SDM\n",ecx);
+			eax = 0;
+			ebx = 0;
+			ecx = 0;
+			edx = 0x4FFFFFFF;
+		}
+		// check if the exit number input is enabled in the kvm
+		else if( ecx == 66 || ecx == 51 || ecx == 34 || ecx == 33 || ecx == 17 || ecx ==16 || ecx == 11 || ecx == 6 || ecx == 5 || ecx == 4 || ecx == 3  ) 	{
+			printk("Exit reason %d not enabled in kvm\n",ecx);
+			eax = 0;
+			ebx = 0;
+			ecx = 0;
+			edx = 0;
+		}
+		//if exit number given is valid, assign cycles to ebx and ecx registers
+		else {
+	printk("cycles in cpuid for exit_reason %d is %lld\n",ecx,(long long)(arch_atomic64_read(&all_exits[ecx].cycles)));
+			ebx = atomic64_read(&(all_exits[ecx].cycles))>>32;
+			ecx = atomic64_read(&(all_exits[ecx].cycles));
+		}
+	}
+	else{
+		kvm_cpuid(vcpu, &eax, &ebx, &ecx, &edx, true);
+	}
+	
 	kvm_rax_write(vcpu, eax);
 	kvm_rbx_write(vcpu, ebx);
 	kvm_rcx_write(vcpu, ecx);

@@ -61,6 +61,7 @@
 #include "vmx.h"
 #include "x86.h"
 
+
 MODULE_AUTHOR("Qumranet");
 MODULE_LICENSE("GPL");
 
@@ -200,6 +201,8 @@ static const struct {
 	[VMENTER_L1D_FLUSH_EPT_DISABLED] = {"EPT disabled", false},
 	[VMENTER_L1D_FLUSH_NOT_REQUIRED] = {"not required", false},
 };
+
+
 
 #define L1D_CACHE_ORDER 4
 static void *vmx_l1d_flush_pages;
@@ -5536,6 +5539,7 @@ static int handle_encls(struct kvm_vcpu *vcpu)
 	return 1;
 }
 
+
 /*
  * The exit handlers return 1 if the exit was handled fully and guest execution
  * may resume.  Otherwise they set the kvm_run parameter to indicate what needs
@@ -5596,6 +5600,17 @@ static int (*kvm_vmx_exit_handlers[])(struct kvm_vcpu *vcpu) = {
 
 static const int kvm_vmx_max_exit_handlers =
 	ARRAY_SIZE(kvm_vmx_exit_handlers);
+
+/* function to check if given exit_reason is enabled in kvm 
+*/
+bool isEnabled(u32 exit_reason){
+	if(exit_reason >= kvm_vmx_max_exit_handlers || !kvm_vmx_exit_handlers[exit_reason]) {
+		printk("In isEnabled with exit_reason %d\n", exit_reason );
+		return false;
+	}
+	return true;
+}
+EXPORT_SYMBOL(isEnabled);
 
 static void vmx_get_exit_info(struct kvm_vcpu *vcpu, u64 *info1, u64 *info2)
 {
@@ -5845,6 +5860,29 @@ static int vmx_handle_exit(struct kvm_vcpu *vcpu,
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	u32 exit_reason = vmx->exit_reason;
 	u32 vectoring_info = vmx->idt_vectoring_info;
+	
+	// begin_cycles stores initial processor cycles count before processing exit 
+	atomic64_t begin_cycles;
+
+	// end_cycles stores processor cycles count after processing exit 
+	atomic64_t end_cycles;
+	
+	// cur_cycles stores processor cycles count for processing cur exit reason 
+	atomic64_t cur_cycles;
+
+	u32 return_value;
+
+	// total_exits is a global variable to count total exits occurred
+	extern atomic_t total_exits;
+	// total_cycles is a global variable to count total processor cycles taken to process all exits occurred
+	extern atomic64_t total_cycles;
+	// all_exits is a global variable to keep track of count of occurrences and processor cycles taken for all exits
+	extern all_exit all_exits[SIZE];
+	
+	// initialize all declared local variables to 0 for envery exit
+	arch_atomic64_set(&begin_cycles,0);
+	arch_atomic64_set(&end_cycles,0);
+	arch_atomic64_set(&cur_cycles,0);
 
 	trace_kvm_exit(exit_reason, vcpu, KVM_ISA_VMX);
 
@@ -5952,8 +5990,31 @@ static int vmx_handle_exit(struct kvm_vcpu *vcpu,
 					 kvm_vmx_max_exit_handlers);
 	if (!kvm_vmx_exit_handlers[exit_reason])
 		goto unexpected_vmexit;
-
-	return kvm_vmx_exit_handlers[exit_reason](vcpu);
+	
+	// increment total_exits to count the current exit
+	atomic_inc(&total_exits);
+	// increment count of occurrence of a particular exit in the all_exits list
+	atomic_inc(&(all_exits[exit_reason]).exits);
+	// record initial count of processor cycles
+	arch_atomic64_set(&begin_cycles,rdtsc());
+	return_value = kvm_vmx_exit_handlers[exit_reason](vcpu);
+	// record count of processor cycles after exit handling 
+	arch_atomic64_set(&end_cycles,rdtsc());
+	// end_cycles - begin_cycles gives the processor cycles taken for the current exit
+	arch_atomic64_sub((u64)arch_atomic64_read(&begin_cycles),&end_cycles);
+	// assign cur_cycles = end_cycles
+	arch_atomic64_set(&cur_cycles,arch_atomic64_read(&end_cycles));
+	
+	// add cur_cycles to total_cycles for all exits
+	arch_atomic64_add((u64)arch_atomic64_read(&cur_cycles),&total_cycles);
+	printk("cycles in vmx is %lld\n",(long long)(arch_atomic64_read(&total_cycles)));
+	
+	// add cur_cycles to cycles taken for current exit in all_exits list
+	arch_atomic64_add((u64)arch_atomic64_read(&cur_cycles),&(all_exits[exit_reason].cycles));
+printk("cycles in vmx for exit_reason %d is %lld\n",exit_reason,(long long)(arch_atomic64_read(&(all_exits[exit_reason].cycles))));
+	
+	// return handle exit function output 	
+	return return_value;
 
 unexpected_vmexit:
 	vcpu_unimpl(vcpu, "vmx: unexpected exit reason 0x%x\n", exit_reason);

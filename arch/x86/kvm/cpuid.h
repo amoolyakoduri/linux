@@ -2,9 +2,12 @@
 #ifndef ARCH_X86_KVM_CPUID_H
 #define ARCH_X86_KVM_CPUID_H
 
+#define SIZE 67
+
 #include "x86.h"
 #include <asm/cpu.h>
 #include <asm/processor.h>
+#include <asm/atomic.h>
 
 int kvm_update_cpuid(struct kvm_vcpu *vcpu);
 bool kvm_mpx_supported(void);
@@ -31,6 +34,14 @@ static inline int cpuid_maxphyaddr(struct kvm_vcpu *vcpu)
 {
 	return vcpu->arch.maxphyaddr;
 }
+
+
+struct all_exit_list{
+	atomic_t exits;
+	atomic64_t cycles;
+};
+
+typedef struct all_exit_list all_exit;
 
 struct cpuid_reg {
 	u32 function;
