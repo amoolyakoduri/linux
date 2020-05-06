@@ -5602,7 +5602,7 @@ static const int kvm_vmx_max_exit_handlers =
 	ARRAY_SIZE(kvm_vmx_exit_handlers);
 
 /* function to check if given exit_reason is enabled in kvm 
-*/
+
 bool isEnabled(u32 exit_reason){
 	if(exit_reason >= kvm_vmx_max_exit_handlers || !kvm_vmx_exit_handlers[exit_reason]) {
 		printk("In isEnabled with exit_reason %d\n", exit_reason );
@@ -5611,6 +5611,7 @@ bool isEnabled(u32 exit_reason){
 	return true;
 }
 EXPORT_SYMBOL(isEnabled);
+*/
 
 static void vmx_get_exit_info(struct kvm_vcpu *vcpu, u64 *info1, u64 *info2)
 {

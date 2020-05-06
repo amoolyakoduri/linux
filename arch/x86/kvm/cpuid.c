@@ -1087,7 +1087,7 @@ static void initialize_exit_list(void){
 int kvm_emulate_cpuid(struct kvm_vcpu *vcpu)
 {
 	u32 eax, ebx, ecx, edx;
-	
+	int i;
 	if (cpuid_fault_enabled(vcpu) && !kvm_require_cpl(vcpu, 0))
 		return 1;
 
@@ -1101,6 +1101,10 @@ int kvm_emulate_cpuid(struct kvm_vcpu *vcpu)
 
 	// for leaf node 0x4FFFFFFF, assign the total_exits to eax register
 	if( eax == 0x4FFFFFFF ){
+		printk("in cpuid , total exits are : %d\n",(int)(atomic_read(&total_exits)));
+		for( i = 0; i < SIZE; i++) {
+			printk("cpuid %d = %d\n",i,(int)(atomic_read(&all_exits[i].exits)));
+		}
 		eax = (u32)(atomic_read(&total_exits));	
 		ebx = 0;
 		ecx = 0;
@@ -1161,6 +1165,16 @@ int kvm_emulate_cpuid(struct kvm_vcpu *vcpu)
 			ebx = atomic64_read(&(all_exits[ecx].cycles))>>32;
 			ecx = atomic64_read(&(all_exits[ecx].cycles));
 		}
+	}
+	else if( eax == 0x4ffffffb ){
+		int i;
+		for( i = 0; i < SIZE; i++) {
+			printk("cpuid %d = %d\n",i,(int)(atomic_read(&all_exits[i].exits)));
+		}
+		eax = 0;
+		ebx = 0;
+		ecx = 0;
+		edx = 0;		
 	}
 	else{
 		kvm_cpuid(vcpu, &eax, &ebx, &ecx, &edx, true);
