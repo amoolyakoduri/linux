@@ -1120,7 +1120,7 @@ int kvm_emulate_cpuid(struct kvm_vcpu *vcpu)
 			edx = 0x4FFFFFFF;
 		}
 		// check if the exit number input is enabled in the kvm
-		else if(ecx == 66 || ecx == 51 || ecx == 34 || ecx == 33 || ecx == 17 || ecx ==16 || ecx == 11 || ecx == 6 || ecx == 5 || ecx == 4 || ecx == 3 ) 	{
+		else if(ecx == 66 || ecx==64 || ecx ==63 || ecx == 51 || ecx == 34 || ecx == 33 || ecx == 17 || ecx ==16 || ecx == 11 || ecx == 6 || ecx == 5 || ecx == 4 || ecx == 3 ) 	{
 			printk("Exit reason %d not enabled in kvm\n",ecx);
 			eax = 0;
 			ebx = 0;
@@ -1151,7 +1151,7 @@ int kvm_emulate_cpuid(struct kvm_vcpu *vcpu)
 			edx = 0x4FFFFFFF;
 		}
 		// check if the exit number input is enabled in the kvm
-		else if( ecx == 66 || ecx == 51 || ecx == 34 || ecx == 33 || ecx == 17 || ecx ==16 || ecx == 11 || ecx == 6 || ecx == 5 || ecx == 4 || ecx == 3  ) 	{
+		else if( ecx == 66 || ecx==64 || ecx ==63 || ecx == 51 || ecx == 34 || ecx == 33 || ecx == 17 || ecx ==16 || ecx == 11 || ecx == 6 || ecx == 5 || ecx == 4 || ecx == 3  ) 	{
 			printk("Exit reason %d not enabled in kvm\n",ecx);
 			eax = 0;
 			ebx = 0;
